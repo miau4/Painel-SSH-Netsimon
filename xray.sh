@@ -34,6 +34,17 @@ generate_config() {
     "error": "/var/log/xray/error.log",
     "loglevel": "warning"
   },
+  "api": {
+    "services": ["StatsService"],
+    "tag": "api"
+  },
+  "stats": {},
+  "policy": {
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true
+    }
+  },
   "inbounds": [
     {
       "port": $PORT,
@@ -57,15 +68,44 @@ generate_config() {
 }
 EOF
 
-    echo "Config base criada"
+    echo -e "${GREEN}Config base criada com suporte a monitoramento!${NC}"
 }
 
 add_user() {
+    if [ ! -f "$CONFIG" ]; then
+        echo -e "${RED}Config do Xray não encontrada!${NC}"
+        return
+    fi
+
+    if ! command -v jq >/dev/null; then
+        echo -e "${RED}jq não instalado!${NC}"
+        return
+    fi
+
     UUID=$(cat /proc/sys/kernel/random/uuid)
 
-    jq ".inbounds[0].settings.clients += [{\"id\":\"$UUID\"}]" $CONFIG > /tmp/xray.tmp && mv /tmp/xray.tmp $CONFIG
+    tmp=$(mktemp)
+
+    jq --arg uuid "$UUID" '
+    .inbounds[0].settings.clients =
+    (.inbounds[0].settings.clients // []) + [
+        {
+            "id": $uuid
+        }
+    ]
+    ' "$CONFIG" > "$tmp"
+
+    if [ $? -ne 0 ] || [ ! -s "$tmp" ]; then
+        echo -e "${RED}Erro ao atualizar config!${NC}"
+        rm -f "$tmp"
+        return
+    fi
+
+    mv "$tmp" "$CONFIG"
 
     echo "$UUID" >> "$USERS"
+
+    systemctl restart xray
 
     echo -e "${GREEN}Usuário criado:${NC}"
     echo "$UUID"
@@ -73,6 +113,7 @@ add_user() {
 
 restart_xray() {
     systemctl restart xray
+    echo "Xray reiniciado"
 }
 
 status_xray() {
@@ -83,6 +124,7 @@ remove_xray() {
     systemctl stop xray
     apt remove xray -y
     rm -rf /etc/xray
+    echo "Xray removido"
 }
 
 # MENU
