@@ -1,8 +1,6 @@
 #!/bin/bash
 
 BASE="/etc/painel"
-SERVICES="$BASE/services"
-CORE="$BASE/core"
 
 CONFIG="/etc/xray/config.json"
 USERDB="/etc/xray-manager/users.xray"
@@ -13,7 +11,7 @@ BLOCKED="/etc/xray-manager/blocked.db"
 # ===============================
 clear
 
-mkdir -p "$BASE" "$SERVICES" "$CORE" /etc/xray-manager
+mkdir -p "$BASE" /etc/xray-manager
 
 touch "$USERDB" "$BLOCKED"
 
@@ -79,13 +77,13 @@ get_blocked() { wc -l < "$BLOCKED" 2>/dev/null || echo 0; }
 
 get_online() {
     command -v xray >/dev/null || { echo 0; return; }
-    xray api statsquery --pattern "user>>>" 2>/dev/null | grep online | wc -l
+    xray api statsquery --pattern "user>>>" 2>/dev/null | grep -o '[0-9]*$' | awk '{s+=$1} END {print s+0}'
 }
 
-get_cpu() { top -bn1 | grep "Cpu(s)" | awk '{print int($2)}'; }
-get_ram() { free | awk '/Mem:/ {printf("%d"), $3/$2 * 100}'; }
-get_disk() { df / | awk 'NR==2 {gsub("%",""); print $5}'; }
-get_ip() { hostname -I | awk '{print $1}'; }
+get_cpu() { top -bn1 2>/dev/null | grep "Cpu(s)" | awk '{print int($2)}' || echo 0; }
+get_ram() { free 2>/dev/null | awk '/Mem:/ {printf("%d"), $3/$2 * 100}' || echo 0; }
+get_disk() { df / 2>/dev/null | awk 'NR==2 {gsub("%",""); print $5}' || echo 0; }
+get_ip() { hostname -I 2>/dev/null | awk '{print $1}'; }
 
 status_xray() { systemctl is-active xray 2>/dev/null || echo "offline"; }
 status_limiter() { pgrep -f limit.sh >/dev/null && echo "ON" || echo "OFF"; }
@@ -158,8 +156,8 @@ sed -i "/^$user|/d" "$BLOCKED"
 10) run "/etc/xray-manager/repair.sh" ;;
 
 11)
-nohup bash /etc/xray-manager/limit.sh >/dev/null 2>&1 &
-nohup bash /etc/xray-manager/unblock.sh >/dev/null 2>&1 &
+nohup bash "$BASE/limit.sh" >/dev/null 2>&1 &
+nohup bash "$BASE/unblock.sh" >/dev/null 2>&1 &
 ;;
 
 12)
@@ -172,9 +170,9 @@ ps aux | grep -E "limit.sh|unblock.sh"
 pause
 ;;
 
-14) run "$SERVICES/websocket.sh" ;;
-15) run "$SERVICES/slowdns-server.sh" ;;
-16) run "$SERVICES/xray.sh" ;;
+14) run "$BASE/websocket.sh" ;;
+15) run "$BASE/slowdns-server.sh" ;;
+16) run "$BASE/xray.sh" ;;
 
 17) watch -n 2 "bash $BASE/online.sh" ;;
 18) tail -f /var/log/xray/access.log ;;
